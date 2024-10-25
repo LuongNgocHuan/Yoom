@@ -4,23 +4,27 @@
 import { useGetCalls } from "@/hooks/useGetCalls";
 import { Call, CallRecording } from "@stream-io/video-react-sdk";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import MeetingCard from "./MeetingCard";
 import { Underline } from "lucide-react";
 import Loader from "./Loader";
+import { promises } from "dns";
+import { useToast } from "@/hooks/use-toast";
 
-const CallList = ({ type }: { type: "ended" | "upcoming" | "recoding" }) => {
+const CallList = ({ type }: { type: "ended" | "upcoming" | "recordings" }) => {
   const { endedCalls, upcomingCalls, callRecordings, isLoading } =
     useGetCalls();
 
   const router = useRouter();
   const [recordings, setRecordings] = useState<CallRecording[]>([]);
 
+  const { toast } = useToast();
+
   const getCalls = () => {
     switch (type) {
       case "ended":
         return endedCalls;
-      case "recoding":
+      case "recordings":
         return recordings;
       case "upcoming":
         return upcomingCalls;
@@ -34,7 +38,7 @@ const CallList = ({ type }: { type: "ended" | "upcoming" | "recoding" }) => {
     switch (type) {
       case "ended":
         return "No Previous Calls";
-      case "recoding":
+      case "recordings":
         return "No Recordings Calls";
       case "upcoming":
         return "No Upcoming Calls";
@@ -43,6 +47,24 @@ const CallList = ({ type }: { type: "ended" | "upcoming" | "recoding" }) => {
         return "";
     }
   };
+
+  useEffect(() => {
+    const fetchRecordings = async () => {
+      try {
+        const callData = await Promise.all(
+          callRecordings.map((meeting) => meeting.queryRecordings())
+        );
+
+        const recordings = callData
+          .filter((call) => call.recordings.length > 0)
+          .flatMap((call) => call.recordings);
+        setRecordings(recordings);
+      } catch (error) {
+        toast({ title: "Try again later" });
+      }
+    };
+    if (type === "recordings") fetchRecordings();
+  }, [type, callRecordings]);
 
   const calls = getCalls();
   const noCallsMessage = getNoCallsMessage();
@@ -63,11 +85,12 @@ const CallList = ({ type }: { type: "ended" | "upcoming" | "recoding" }) => {
                 : "/icons/recordings.svg"
             }
             title={
-              (meeting as Call).state.custom.description.substring(0, 26) ||
+              (meeting as Call).state?.custom.description.substring(0, 26) ||
+              meeting.filename.substring(0, 20) ||
               "No description"
             }
             date={
-              meeting.state.startsAt.toLocaleString() ||
+              meeting.state?.startsAt.toLocaleString() ||
               meeting.start_time.toLocaleString()
             }
             isPreviousMeeting={type === "ended"}
